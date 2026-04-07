@@ -367,7 +367,8 @@ def remove_channel_callback(call):
         bot.answer_callback_query(call.id, "Channel not found.")
 
 # --- 8. BACKGROUND CHANNEL LISTENER ---
-@bot.channel_post_handler(func=lambda message: True)
+# FIX: Added content_types so the bot catches photos, videos, and documents!
+@bot.channel_post_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'animation', 'document', 'voice'])
 def handle_channel_post(message):
     channel_id = str(message.chat.id)
     data = load_data()
@@ -385,5 +386,5 @@ def handle_channel_post(message):
             "quantity": channel_info["quantity"]
         })
 
-print("Bot successfully connected and running...")
+print("Bot successfully connected and catching all media...")
 bot.infinity_polling()
