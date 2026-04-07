@@ -90,7 +90,7 @@ def queue_worker():
         else:
             bot.send_message(ADMIN_ID, f"⚠️ <b>Auto-Order Failed!</b>\nLink: {post_link}\nError: {response.get('error', 'Unknown Error')}", parse_mode="HTML")
         
-        time.sleep(3) 
+        time.sleep(10) 
         order_queue.task_done()
 
 threading.Thread(target=queue_worker, daemon=True).start()
