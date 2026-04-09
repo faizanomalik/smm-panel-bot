@@ -368,7 +368,7 @@ def remove_channel_callback(call):
 
 # --- 8. BACKGROUND CHANNEL LISTENER ---
 # FIX: Added content_types so the bot catches photos, videos, and documents!
-@bot.channel_post_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'animation', 'document', 'voice'])
+@bot.channel_post_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'animation', 'document', 'voice' ,'sticker'])
 def handle_channel_post(message):
     channel_id = str(message.chat.id)
     data = load_data()
