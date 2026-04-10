@@ -308,13 +308,27 @@ def process_quantity_step(message, channel_id, channel_name, service_id):
         return
     
     data = load_data()
-    data["channels"][channel_id] = {
-        "username": channel_name,
-        "service_id": int(service_id),
-        "quantity": int(quantity)
-    }
+    
+    # 1. If channel is entirely new, create the multi-service structure
+    if channel_id not in data["channels"]:
+        data["channels"][channel_id] = {
+            "username": channel_name,
+            "services": {}
+        }
+    else:
+        # 2. Auto-upgrade old JSON data format to the new multi-service format safely
+        if "service_id" in data["channels"][channel_id]:
+            old_srv = str(data["channels"][channel_id]["service_id"])
+            old_qty = data["channels"][channel_id]["quantity"]
+            data["channels"][channel_id]["services"] = {old_srv: old_qty}
+            del data["channels"][channel_id]["service_id"]
+            del data["channels"][channel_id]["quantity"]
+            
+    # 3. Add or overwrite the specific service ID
+    data["channels"][channel_id]["services"][str(service_id)] = int(quantity)
+    
     save_data(data)
-    bot.reply_to(message, f"✅ Setup complete for @{channel_name}!\nService ID: {service_id}\nQuantity: {quantity}")
+    bot.reply_to(message, f"✅ Setup complete for @{channel_name}!\nAdded/Updated Service ID: {service_id}\nQuantity: {quantity}")
 
 @bot.message_handler(commands=['channels'])
 def manage_channels(message):
@@ -333,7 +347,16 @@ def manage_channels(message):
     
     for cid, info in channels.items():
         username = info.get("username", "Unknown")
-        text += f"• <b>@{username}</b> (Service: {info['service_id']} | Qty: {info['quantity']})\n"
+        text += f"• <b>@{username}</b>\n"
+        
+        # Display multiple services gracefully
+        if "services" in info:
+            for srv_id, qty in info["services"].items():
+                text += f"   ↳ Service: {srv_id} | Qty: {qty}\n"
+        elif "service_id" in info: # Fallback for old data
+            text += f"   ↳ Service: {info['service_id']} | Qty: {info['quantity']}\n"
+            
+        text += "\n"
         markup.add(InlineKeyboardButton(f"❌ Remove @{username}", callback_data=f"rmchan_{cid}"))
 
     bot.reply_to(message, text, parse_mode="HTML", reply_markup=markup)
@@ -350,7 +373,7 @@ def remove_channel_callback(call):
     if cid_to_remove in data.get("channels", {}):
         del data["channels"][cid_to_remove]
         save_data(data)
-        bot.answer_callback_query(call.id, "Channel removed successfully!")
+        bot.answer_callback_query(call.id, "Channel completely removed!")
 
         channels = data.get("channels", {})
         if not channels:
@@ -360,15 +383,22 @@ def remove_channel_callback(call):
             text = "📢 <b>Active Auto-Order Channels:</b>\n\n"
             for cid, info in channels.items():
                 username = info.get("username", "Unknown")
-                text += f"• <b>@{username}</b> (Service: {info['service_id']} | Qty: {info['quantity']})\n"
+                text += f"• <b>@{username}</b>\n"
+                
+                if "services" in info:
+                    for srv_id, qty in info["services"].items():
+                        text += f"   ↳ Service: {srv_id} | Qty: {qty}\n"
+                elif "service_id" in info: 
+                    text += f"   ↳ Service: {info['service_id']} | Qty: {info['quantity']}\n"
+                    
+                text += "\n"
                 markup.add(InlineKeyboardButton(f"❌ Remove @{username}", callback_data=f"rmchan_{cid}"))
             bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
     else:
         bot.answer_callback_query(call.id, "Channel not found.")
 
 # --- 8. BACKGROUND CHANNEL LISTENER ---
-# FIX: Added content_types so the bot catches photos, videos, and documents!
-@bot.channel_post_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'animation', 'document', 'voice' ,'sticker'])
+@bot.channel_post_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'animation', 'document', 'voice', 'sticker'])
 def handle_channel_post(message):
     channel_id = str(message.chat.id)
     data = load_data()
@@ -377,14 +407,23 @@ def handle_channel_post(message):
         channel_info = data["channels"][channel_id]
         username = channel_info["username"]
         post_id = message.message_id
-        
         post_link = f"https://t.me/{username}/{post_id}"
         
-        order_queue.put({
-            "service_id": channel_info["service_id"],
-            "link": post_link,
-            "quantity": channel_info["quantity"]
-        })
+        # Throw ALL attached services for this channel into the queue
+        if "services" in channel_info:
+            for srv_id, qty in channel_info["services"].items():
+                order_queue.put({
+                    "service_id": int(srv_id),
+                    "link": post_link,
+                    "quantity": qty
+                })
+        # Failsafe for old data format
+        elif "service_id" in channel_info:
+            order_queue.put({
+                "service_id": channel_info["service_id"],
+                "link": post_link,
+                "quantity": channel_info["quantity"]
+            })
 
-print("Bot successfully connected and catching all media...")
+print("Bot successfully connected and catching all media with Multi-Service support...")
 bot.infinity_polling()
